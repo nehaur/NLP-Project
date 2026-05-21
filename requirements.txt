@@ -1,1 +1,8 @@
-
+torch
+transformers
+accelerate
+scipy
+scikit-learn
+matplotlib
+tqdm
+numpy
