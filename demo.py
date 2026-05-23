@@ -1,105 +1,182 @@
-import argparse
-import torch
-import numpy as np
-from transformers import AutoTokenizer, AutoModelForCausalLM
+# NLP-Project
 
-MODEL_NAME = "mistralai/Mistral-7B-v0.1"
-MAX_LEN = 600
+Dynamic Uncertainty-Aware Attribution for Hallucination Detection in Retrieval-Augmented Generation (RAG) systems.
 
-tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME)
-tokenizer.pad_token = tokenizer.eos_token
+This repository contains the implementation for CS F429 (Natural Language Processing), BITS Pilani Dubai Campus, Semester II 2025–26.
 
-model = AutoModelForCausalLM.from_pretrained(
-    MODEL_NAME,
-    torch_dtype=torch.float32,
-    device_map="auto",
-    low_cpu_mem_usage=True
-)
-model.eval()
+The project detects hallucinations in RAG systems using token-level uncertainty metrics derived from dual forward passes through a large language model.
 
+---
 
-def get_token_signals(text_with, text_without):
-    enc_w = tokenizer(
-        text_with,
-        return_tensors="pt",
-        truncation=True,
-        max_length=MAX_LEN
-    ).to(model.device)
+## Project Overview
 
-    enc_wo = tokenizer(
-        text_without,
-        return_tensors="pt",
-        truncation=True,
-        max_length=MAX_LEN
-    ).to(model.device)
+The system computes token-level uncertainty signals including:
 
-    with torch.no_grad():
-        out_w = model(**enc_w)
-        out_wo = model(**enc_wo)
+- Prediction Entropy (with context)
+- Prediction Entropy (without context)
+- Information Gain
+- KL Divergence
+- Confidence Drop
+- Semantic Entropy
 
-    seq = min(out_w.logits.shape[1], out_wo.logits.shape[1])
+These signals are combined into a composite hallucination score.
 
-    logits_w = out_w.logits[0, :seq].float()
-    logits_wo = out_wo.logits[0, :seq].float()
+Model used:
+- `mistralai/Mistral-7B-v0.1`
 
-    probs_w = torch.softmax(logits_w, dim=-1)
-    probs_wo = torch.softmax(logits_wo, dim=-1)
+---
 
-    log_w = torch.log(probs_w + 1e-10)
-    log_wo = torch.log(probs_wo + 1e-10)
+## Repository Structure
 
-    h_with = (-torch.sum(probs_w * log_w, dim=-1)).cpu().numpy()
-    h_without = (-torch.sum(probs_wo * log_wo, dim=-1)).cpu().numpy()
-    delta_h = h_without - h_with
+```text
+NLP-Project/
+│
+├── demo.py                 # Main demo script
+├── requirements.txt        # Python dependencies
+├── README.md               # Project documentation
+├── references.bib          # Bibliography file
+├── report.tex              # Main LaTeX report
+├── arch.png                # Pipeline architecture figure
+├── temporal_plot.png       # Temporal analysis plot
+├── bits_logo.png           # BITS logo
+├── tagline.jpg             # BITS tagline image
+└── outputs/                # Generated outputs/results
+```
 
-    kl_div = torch.sum(
-        probs_w * (log_w - log_wo),
-        dim=-1
-    ).cpu().numpy()
+---
 
-    conf_w = probs_w.max(dim=-1).values.cpu().numpy()
-    conf_wo = probs_wo.max(dim=-1).values.cpu().numpy()
-    conf_drop = conf_w - conf_wo
+## Python Version
 
-    top5 = probs_w.topk(5, dim=-1).values
-    top5 = top5 / top5.sum(dim=-1, keepdim=True)
+Python 3.10
 
-    sem_ent = (-torch.sum(
-        top5 * torch.log(top5 + 1e-10),
-        dim=-1
-    )).cpu().numpy()
+---
 
-    tokens = tokenizer.convert_ids_to_tokens(enc_w["input_ids"][0][:seq])
+## Hardware
 
-    results = []
+Experiments were conducted using:
 
-    for i in range(seq):
-        results.append({
-            "token": tokens[i],
-            "H_with": float(h_with[i]),
-            "H_without": float(h_without[i]),
-            "delta_H": float(delta_h[i]),
-            "info_gain": float(delta_h[i]),
-            "kl_div": float(kl_div[i]),
-            "conf_drop": float(conf_drop[i]),
-            "semantic_entropy": float(sem_ent[i])
-        })
+- NVIDIA Tesla T4 GPU
+- CUDA-enabled environment
+- Kaggle Notebook runtime
 
-    return results
+---
 
+## Installation
 
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
+Clone the repository:
 
-    parser.add_argument("--passage", required=True)
-    parser.add_argument("--context", required=True)
+```bash
+git clone https://github.com/nehaur/NLP-Project.git
+cd NLP-Project
+```
 
-    args = parser.parse_args()
+Install dependencies:
 
-    text_with = f"Context: {args.context}\nPassage: {args.passage}"
-    text_without = f"Passage: {args.passage}"
+```bash
+pip install -r requirements.txt
+```
 
-    scores = get_token_signals(text_with, text_without)
+---
 
-    for row in scores:
-        print(row)
+## Running the Demo
+
+Example usage:
+
+```bash
+python demo.py --passage "The Eiffel Tower is in Berlin." --context "The Eiffel Tower is located in Paris, France."
+```
+
+---
+
+## Example Output
+
+The script returns token-level uncertainty metrics such as:
+
+```text
+Token: Berlin
+Entropy_with_context: 1.82
+Entropy_without_context: 1.21
+Information_Gain: -0.61
+KL_Divergence: 0.77
+Confidence_Drop: -0.19
+Semantic_Entropy: 0.58
+```
+
+---
+
+## Experimental Protocol
+
+- All reported tables use held-out test-set numbers only.
+- Validation results are not substituted into final result tables.
+- Test data remained unseen until final evaluation.
+
+---
+
+## Statistical Settings
+
+Bootstrap confidence intervals:
+- 1000 resamples
+- Replacement enabled
+- Random seed = 42
+
+Mann–Whitney U tests:
+- Two-sided
+- Significance threshold α = 0.05
+
+---
+
+## Reproducibility
+
+The implementation uses:
+- Fixed random seed
+- Deterministic evaluation setup
+- Explicit hyperparameter documentation in the report
+
+---
+
+## Dependencies
+
+Main libraries used:
+
+- torch
+- transformers
+- numpy
+- scipy
+- pandas
+- scikit-learn
+- matplotlib
+- accelerate
+- tqdm
+- sentencepiece
+
+---
+
+## Academic Context
+
+Course:
+- CS F429 — Natural Language Processing
+
+Track:
+- Track A — Dynamic Uncertainty-Aware Attribution
+
+Institution:
+- BITS Pilani, Dubai Campus
+
+Semester:
+- Second Semester 2025–26
+
+---
+
+## Citation
+
+If referencing this work, please cite the accompanying report and referenced papers included in `references.bib`.
+
+---
+
+## Authors
+
+- Ria Singh
+- Neha Nair L
+
+Under the supervision of:
+- Prof. Elakkiya Rajasekar
